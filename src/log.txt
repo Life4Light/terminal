@@ -1,0 +1,123 @@
+log.txt
+main
+main.c
+log.txt
+main
+main.c
+1
+2
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#define MAX_PROCESSES 10
+#define MAX_ARGS 10
+
+pid_t child_pids[MAX_PROCESSES];
+int child_count = 0;
+
+void signal_handler(int signal)
+{
+    for (int i = 0; i < child_count; i++)
+    {
+        if (child_pids[i] != 0)
+        {
+            // Проверяем, завершился ли процесс
+            if (waitpid(child_pids[i], NULL, WNOHANG) == 0)
+            {
+                // Если процесс еще не завершился, отправляем ему сигнал
+                kill(child_pids[i], signal);
+            }
+            else
+            {
+                // Если процесс уже завершился, обнуляем его PID в массиве
+                child_pids[i] = 0;
+            }
+        }
+    }
+
+    child_count = 0;
+}
+
+int main()
+{
+    char command[100];
+    signal(SIGINT, signal_handler);
+
+    while (1)
+    {
+        printf("> ");
+        fgets(command, 100, stdin);
+        command[strcspn(command, "\n")] = 0;
+
+        char *args[MAX_ARGS];
+        int arg_count = 0;
+
+        char *token = strtok(command, " ");
+        if (token == NULL)  // Check for command consisting only of spaces
+        {
+            continue;
+        }
+        while (token != NULL && arg_count < MAX_ARGS - 1)
+        {
+            args[arg_count++] = token;
+            token = strtok(NULL, " ");
+        }
+        args[arg_count] = NULL;
+
+        if (strcmp(args[0], "exit") == 0)
+        {
+            break;
+        }
+
+        if (strcmp(args[0], "cd") == 0 && args[1] != NULL)
+        {
+            chdir(args[1]);
+            continue;
+        }
+
+        pid_t pid = fork();
+        if (pid == 0)
+        {
+            int fd = open("log.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);  // Открываем файл для записи
+            if (fd == -1)
+            {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+
+            dup2(fd, STDOUT_FILENO);  // Перенаправляем стандартный вывод в файл
+            close(fd);  // Закрываем файловый дескриптор, так как он больше не нужен
+
+            execvp(args[0], args);
+            exit(0);
+        }
+        else
+        {
+            if (child_count < MAX_PROCESSES)
+            {
+                child_pids[child_count++] = pid;
+            }
+        }
+    }
+
+    for (int i = 0; i < child_count; i++)
+    {
+        waitpid(child_pids[i], NULL, 0);
+    }
+
+    return 0;
+}log.txt
+main
+main.c
+log.txt
+main
+main.c
